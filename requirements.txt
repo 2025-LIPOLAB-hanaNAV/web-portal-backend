@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+python-multipart
+elasticsearch
+pydantic
+python-json-logger
+aiofiles
