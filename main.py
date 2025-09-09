@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 import json
@@ -8,6 +9,8 @@ import os
 import uuid
 from datetime import datetime
 import aiofiles
+import mimetypes
+import re
 from elasticsearch import Elasticsearch, AsyncElasticsearch
 
 app = FastAPI(
@@ -26,12 +29,39 @@ app.add_middleware(
 
 POSTS_DIR = "data/posts"
 UPLOADS_DIR = "data/uploads"
+IMAGES_DIR = "data/images"
 ES_HOST = "http://localhost:9200"
 
 os.makedirs(POSTS_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DIR, exist_ok=True)
+os.makedirs(IMAGES_DIR, exist_ok=True)
+
+app.mount("/static/images", StaticFiles(directory=IMAGES_DIR), name="images")
 
 es_client = None
+
+def clean_filename(filename: str) -> str:
+    """
+    한글 및 특수문자가 포함된 파일명을 영문으로 정리
+    """
+    if not filename:
+        return "image"
+    
+    # 파일명과 확장자 분리
+    name, ext = os.path.splitext(filename)
+    
+    # 한글 및 특수문자 제거, 영문과 숫자만 유지
+    clean_name = re.sub(r'[^a-zA-Z0-9._-]', '', name)
+    
+    # 빈 문자열이면 기본값 사용
+    if not clean_name:
+        clean_name = "image"
+    
+    # 최대 길이 제한
+    if len(clean_name) > 50:
+        clean_name = clean_name[:50]
+    
+    return clean_name + ext
 
 class Attachment(BaseModel):
     id: str
@@ -48,6 +78,12 @@ class PostCreate(BaseModel):
     endDate: Optional[str] = None
     badges: Optional[List[str]] = []
 
+class UploadedImage(BaseModel):
+    id: str
+    filename: str
+    url: str
+    original_filename: Optional[str] = None
+
 class PostResponse(BaseModel):
     id: str
     title: str
@@ -60,6 +96,7 @@ class PostResponse(BaseModel):
     badges: List[str]
     content: str
     attachments: List[Attachment]
+    uploaded_images: Optional[List[UploadedImage]] = []
 
 def get_es_client():
     global es_client
@@ -133,14 +170,15 @@ def index_post_to_es(post_data: dict):
 
 @app.post("/api/posts", response_model=PostResponse)
 async def create_post(
-    title: str = Form(...),
-    department: str = Form(...),
-    author: str = Form(...),
-    category: str = Form(...),
-    content: str = Form(...),
-    endDate: Optional[str] = Form(None),
-    badges: Optional[str] = Form("[]"),
-    files: Optional[List[UploadFile]] = File(None)
+    title: str = Form(..., description="게시물 제목"),
+    department: str = Form(..., description="부서명"),
+    author: str = Form(..., description="작성자"),
+    category: str = Form(..., description="카테고리"),
+    content: str = Form(..., description="게시물 내용 (HTML 형식, 이미지 태그 포함 가능)"),
+    endDate: Optional[str] = Form(None, description="종료일 (YYYY-MM-DD 형식)"),
+    badges: Optional[str] = Form("[]", description="뱃지 목록 (JSON 배열 형식)"),
+    files: Optional[List[UploadFile]] = File(None, description="첨부파일 목록"),
+    images: List[UploadFile] = File([], description="게시물 내용에 삽입할 이미지 목록")
 ):
     post_id = str(uuid.uuid4()).replace('-', '')[:9]
     
@@ -173,6 +211,48 @@ async def create_post(
                 }
                 attachments.append(attachment)
     
+    uploaded_images = []
+    image_tags = []
+    
+    if images:
+        for image in images:
+            if image.filename and hasattr(image, 'content_type') and image.content_type:
+                if image.content_type.startswith("image/"):
+                    allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/bmp"]
+                    if image.content_type in allowed_types:
+                        try:
+                            image_id = str(uuid.uuid4())[:12]
+                            
+                            # 원본 파일명 정리 (한글 제거)
+                            clean_original_name = clean_filename(image.filename)
+                            file_extension = os.path.splitext(clean_original_name)[1] or ".jpg"
+                            
+                            # 저장될 파일명 생성 (고유 ID + 확장자)
+                            saved_filename = f"{image_id}{file_extension}"
+                            file_path = os.path.join(IMAGES_DIR, saved_filename)
+                            
+                            async with aiofiles.open(file_path, 'wb') as f:
+                                image_content = await image.read()
+                                await f.write(image_content)
+                            
+                            image_url = f"/static/images/{saved_filename}"
+                            uploaded_images.append({
+                                "id": image_id,
+                                "filename": clean_original_name,
+                                "url": image_url,
+                                "original_filename": image.filename  # 원본 파일명도 보존
+                            })
+                            
+                            # alt 속성에는 정리된 파일명 사용
+                            image_tag = f'<img src="{image_url}" alt="{clean_original_name}" style="max-width: 100%; height: auto;">'
+                            image_tags.append(image_tag)
+                        except Exception as e:
+                            print(f"Error processing image {image.filename}: {e}")
+    
+    if image_tags:
+        images_html = "<div>" + "".join(image_tags) + "</div>"
+        content = content + images_html
+    
     post_data = {
         "id": post_id,
         "title": title,
@@ -184,17 +264,25 @@ async def create_post(
         "category": category,
         "badges": badges_list,
         "content": content,
-        "attachments": attachments
+        "attachments": attachments,
+        "uploaded_images": uploaded_images
     }
     
     save_post_to_file(post_id, post_data)
     index_post_to_es(post_data)
     
-    return PostResponse(**post_data)
+    response_data = {**post_data}
+    if uploaded_images:
+        response_data["message"] = f"Post created successfully with {len(uploaded_images)} image(s) uploaded"
+    
+    return PostResponse(**response_data)
 
 @app.get("/api/posts", response_model=List[PostResponse])
 async def get_posts():
     posts = get_all_posts()
+    for post in posts:
+        if "uploaded_images" not in post:
+            post["uploaded_images"] = []
     return [PostResponse(**post) for post in posts]
 
 @app.get("/api/posts/{post_id}", response_model=PostResponse)
@@ -202,6 +290,9 @@ async def get_post(post_id: str):
     post = load_post_from_file(post_id)
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
+    
+    if "uploaded_images" not in post:
+        post["uploaded_images"] = []
     
     post["views"] += 1
     save_post_to_file(post_id, post)
@@ -216,6 +307,41 @@ async def download_attachment(file_id: str):
             return FileResponse(file_path, filename=filename)
     
     raise HTTPException(status_code=404, detail="File not found")
+
+@app.post("/api/upload-image")
+async def upload_image(
+    image: UploadFile = File(...)
+):
+    """
+    게시물 내용에 삽입할 이미지 업로드
+    """
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+    
+    allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"]
+    if image.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Unsupported image format")
+    
+    image_id = str(uuid.uuid4())[:12]
+    file_extension = os.path.splitext(image.filename)[1] if image.filename else ".jpg"
+    saved_filename = f"{image_id}{file_extension}"
+    file_path = os.path.join(IMAGES_DIR, saved_filename)
+    
+    try:
+        async with aiofiles.open(file_path, 'wb') as f:
+            content = await image.read()
+            await f.write(content)
+        
+        image_url = f"/static/images/{saved_filename}"
+        
+        return {
+            "success": True,
+            "imageId": image_id,
+            "imageUrl": image_url,
+            "filename": image.filename or saved_filename
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
 
 @app.get("/api/search")
 async def search_posts(q: str):

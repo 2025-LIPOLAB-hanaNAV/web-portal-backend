@@ -1,0 +1,20 @@
+{
+  "id": "e8433b317",
+  "title": "디버깅 테스트",
+  "department": "IT",
+  "author": "테스터",
+  "views": 2,
+  "postDate": "2025-09-09",
+  "endDate": null,
+  "category": "테스트",
+  "badges": [],
+  "content": "<p>디버깅용 테스트입니다.</p><div><img src=\"/static/images/84d60e4e-ab0.jpg\" alt=\"test_image.jpg\" style=\"max-width: 100%; height: auto;\"></div>",
+  "attachments": [],
+  "uploaded_images": [
+    {
+      "id": "84d60e4e-ab0",
+      "filename": "test_image.jpg",
+      "url": "/static/images/84d60e4e-ab0.jpg"
+    }
+  ]
+}

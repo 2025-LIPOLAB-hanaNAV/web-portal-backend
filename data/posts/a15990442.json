@@ -1,0 +1,21 @@
+{
+  "id": "a15990442",
+  "title": "한글 파일명 테스트",
+  "department": "IT부서",
+  "author": "테스터",
+  "views": 0,
+  "postDate": "2025-09-09",
+  "endDate": null,
+  "category": "테스트",
+  "badges": [],
+  "content": "<p>한글 파일명 이미지 테스트입니다.</p><div><img src=\"/static/images/175a82f3-4eb.png\" alt=\"image.png\" style=\"max-width: 100%; height: auto;\"></div>",
+  "attachments": [],
+  "uploaded_images": [
+    {
+      "id": "175a82f3-4eb",
+      "filename": "image.png",
+      "url": "/static/images/175a82f3-4eb.png",
+      "original_filename": "테스트이미지.png"
+    }
+  ]
+}

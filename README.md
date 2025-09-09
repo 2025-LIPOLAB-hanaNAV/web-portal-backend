@@ -57,10 +57,15 @@ uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 
 ### 게시물 관련
 
-- `POST /api/posts` - 게시물 생성 (첨부파일 포함 가능)
+- `POST /api/posts` - 게시물 생성 (첨부파일 및 이미지 업로드 가능)
 - `GET /api/posts` - 모든 게시물 조회
-- `GET /api/posts/{post_id}` - 특정 게시물 조회
+- `GET /api/posts/{post_id}` - 특정 게시물 조회 (업로드된 이미지 정보 포함)
 - `GET /api/search?q={query}` - 게시물 검색
+
+### 이미지 업로드
+
+- `POST /api/upload-image` - 게시물 내용에 삽입할 이미지 업로드
+- `GET /static/images/{filename}` - 업로드된 이미지 조회
 
 ### 첨부파일
 
@@ -76,10 +81,30 @@ title: 테스트 게시물
 department: IT부서
 author: 홍길동
 category: 공지
-content: <p>테스트 내용입니다.</p>
+content: <p>테스트 내용입니다. <img src="/static/images/abc123.jpg" alt="이미지"></p>
 badges: ["notice", "important"]
 endDate: 2025-12-31
-files: (선택사항 - 파일 첨부)
+files: (선택사항 - 첨부파일)
+images: (선택사항 - 게시물 내용에 삽입할 이미지 파일들)
+```
+
+## 이미지 업로드 예시 (Postman)
+
+**URL:** `POST http://localhost:8002/api/upload-image`
+
+**Body (form-data):**
+```
+image: (이미지 파일 선택)
+```
+
+**응답 예시:**
+```json
+{
+  "success": true,
+  "imageId": "abc123456789",
+  "imageUrl": "/static/images/abc123456789.jpg",
+  "filename": "original_image.jpg"
+}
 ```
 
 ## 게시물 데이터 구조
@@ -102,6 +127,13 @@ files: (선택사항 - 파일 첨부)
       "name": "filename.pdf",
       "size": "780KB",
       "downloadUrl": "/api/attachments/id/download"
+    }
+  ],
+  "uploaded_images": [
+    {
+      "id": "abc123456789",
+      "filename": "image.jpg",
+      "url": "/static/images/abc123456789.jpg"
     }
   ]
 }
@@ -128,6 +160,7 @@ CORS가 설정되어 있어 프론트엔드에서 백엔드 API 호출 가능합
 
 - **게시물:** `data/posts/` 디렉토리에 JSON 파일로 저장
 - **첨부파일:** `data/uploads/` 디렉토리에 파일명으로 저장
+- **이미지:** `data/images/` 디렉토리에 저장 (정적 파일로 제공)
 
 ## 트러블슈팅
 
