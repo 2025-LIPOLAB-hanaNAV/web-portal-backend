@@ -68,6 +68,7 @@ class Attachment(BaseModel):
     name: str
     size: str
     downloadUrl: str
+    original_filename: Optional[str] = None
 
 class PostCreate(BaseModel):
     title: str
@@ -177,8 +178,8 @@ async def create_post(
     content: str = Form(..., description="게시물 내용 (HTML 형식, 이미지 태그 포함 가능)"),
     endDate: Optional[str] = Form(None, description="종료일 (YYYY-MM-DD 형식)"),
     badges: Optional[str] = Form("[]", description="뱃지 목록 (JSON 배열 형식)"),
-    files: Optional[List[UploadFile]] = File(None, description="첨부파일 목록"),
-    images: List[UploadFile] = File([], description="게시물 내용에 삽입할 이미지 목록")
+    files: List[UploadFile] = File([], description="첨부파일 목록 (단일 또는 다중 파일)"),
+    images: List[UploadFile] = File([], description="게시물 내용에 삽입할 이미지 목록 (단일 또는 다중 파일)")
 ):
     post_id = str(uuid.uuid4()).replace('-', '')[:9]
     
@@ -188,35 +189,50 @@ async def create_post(
         badges_list = []
     
     attachments = []
-    if files:
+    if files and len(files) > 0:
         for file in files:
-            if file.filename:
-                file_id = str(uuid.uuid4())[:8]
-                file_extension = os.path.splitext(file.filename)[1]
-                saved_filename = f"{file_id}{file_extension}"
-                file_path = os.path.join(UPLOADS_DIR, saved_filename)
-                
-                async with aiofiles.open(file_path, 'wb') as f:
-                    file_content = await file.read()
-                    await f.write(file_content)
-                
-                file_size = len(file_content)
-                size_str = f"{file_size}B" if file_size < 1024 else f"{file_size//1024}KB"
-                
-                attachment = {
-                    "id": file_id,
-                    "name": file.filename,
-                    "size": size_str,
-                    "downloadUrl": f"/api/attachments/{file_id}/download"
-                }
-                attachments.append(attachment)
+            # 빈 파일이 아닌지 확인
+            if file.filename and file.filename.strip():
+                try:
+                    file_id = str(uuid.uuid4())[:8]
+                    # 원본 파일명 정리 (한글 처리)
+                    clean_original_name = clean_filename(file.filename)
+                    file_extension = os.path.splitext(clean_original_name)[1] or ""
+                    saved_filename = f"{file_id}{file_extension}"
+                    file_path = os.path.join(UPLOADS_DIR, saved_filename)
+                    
+                    async with aiofiles.open(file_path, 'wb') as f:
+                        file_content = await file.read()
+                        await f.write(file_content)
+                    
+                    file_size = len(file_content)
+                    if file_size < 1024:
+                        size_str = f"{file_size}B"
+                    elif file_size < 1024 * 1024:
+                        size_str = f"{file_size//1024}KB"
+                    else:
+                        size_str = f"{file_size//(1024*1024)}MB"
+                    
+                    attachment = {
+                        "id": file_id,
+                        "name": clean_original_name,
+                        "size": size_str,
+                        "downloadUrl": f"/api/attachments/{file_id}/download",
+                        "original_filename": file.filename
+                    }
+                    attachments.append(attachment)
+                except Exception as e:
+                    print(f"Error processing attachment {file.filename}: {e}")
     
     uploaded_images = []
     image_tags = []
     
-    if images:
+    if images and len(images) > 0:
         for image in images:
-            if image.filename and hasattr(image, 'content_type') and image.content_type:
+            # 빈 파일이 아니고 이미지 파일인지 확인
+            if (image.filename and image.filename.strip() and 
+                hasattr(image, 'content_type') and image.content_type):
+                
                 if image.content_type.startswith("image/"):
                     allowed_types = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp", "image/bmp"]
                     if image.content_type in allowed_types:
@@ -248,6 +264,10 @@ async def create_post(
                             image_tags.append(image_tag)
                         except Exception as e:
                             print(f"Error processing image {image.filename}: {e}")
+                    else:
+                        print(f"Unsupported image type: {image.content_type} for file {image.filename}")
+                else:
+                    print(f"File is not an image: {image.content_type} for file {image.filename}")
     
     if image_tags:
         images_html = "<div>" + "".join(image_tags) + "</div>"
