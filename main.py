@@ -321,12 +321,30 @@ async def get_post(post_id: str):
 
 @app.get("/api/attachments/{file_id}/download")
 async def download_attachment(file_id: str):
+    # 저장된 파일 찾기
+    saved_filename = None
     for filename in os.listdir(UPLOADS_DIR):
         if filename.startswith(file_id):
-            file_path = os.path.join(UPLOADS_DIR, filename)
-            return FileResponse(file_path, filename=filename)
+            saved_filename = filename
+            break
     
-    raise HTTPException(status_code=404, detail="File not found")
+    if not saved_filename:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # 게시물에서 원본 파일명 찾기
+    original_filename = saved_filename  # 기본값은 저장된 파일명
+    posts = get_all_posts()
+    
+    for post in posts:
+        if "attachments" in post:
+            for attachment in post["attachments"]:
+                if attachment["id"] == file_id:
+                    # original_filename이 있으면 사용, 없으면 name 사용
+                    original_filename = attachment.get("original_filename", attachment.get("name", saved_filename))
+                    break
+    
+    file_path = os.path.join(UPLOADS_DIR, saved_filename)
+    return FileResponse(file_path, filename=original_filename)
 
 @app.post("/api/upload-image")
 async def upload_image(
