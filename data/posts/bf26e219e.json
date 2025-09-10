@@ -1,0 +1,29 @@
+{
+  "id": "bf26e219e",
+  "title": "보이스피싱악성앱 탐지방법",
+  "department": "정보보호부",
+  "author": "김하나",
+  "views": 0,
+  "postDate": "2025-09-10",
+  "endDate": "2025-09-09",
+  "category": "공지",
+  "badges": [],
+  "content": "<div><img src=\"/static/images/c1c26819-5d5.png\" alt=\"image.png\" style=\"max-width: 100%; height: auto;\"></div>",
+  "attachments": [
+    {
+      "id": "a1935d31",
+      "name": "image.pdf",
+      "size": "105KB",
+      "downloadUrl": "/api/attachments/a1935d31/download",
+      "original_filename": "보이스피싱예방 현금인출 안내문(손님교부용).pdf"
+    }
+  ],
+  "uploaded_images": [
+    {
+      "id": "c1c26819-5d5",
+      "filename": "image.png",
+      "url": "/static/images/c1c26819-5d5.png",
+      "original_filename": "악성앱탐지.png"
+    }
+  ]
+}

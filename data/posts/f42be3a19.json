@@ -1,0 +1,48 @@
+{
+  "id": "f42be3a19",
+  "title": "[전자금융사고] 고객보호대상(FDS탐지고객)해제 프로세스",
+  "department": "정보보호부",
+  "author": "김하나",
+  "views": 0,
+  "postDate": "2025-09-10",
+  "endDate": "2025-09-09",
+  "category": "공지",
+  "badges": [],
+  "content": "고객보호대상(FDS, 이상징후 탐지) 손님 조회 및 해제 방법 \t\t\n ▶손님이 영업점에 방문하여 고객보호대상에 걸린 사유를 문의 할 경우 어떻게 대응 해야 하나요?\t\t\n\t\t\n최근에 파밍 및 보이스피싱을 통하여 고객의 금융정보를 탈취하는 일이 많아졌고, 탈취된 정보를 가지고 제3자(범죄자)에 의한 불법이체사고가 계속적으로 증가하고 있어 은행에서는 손님의 소중한 금융자산을 보호하고자 전자금융거래 시 이상징후로 판단되는 경우 보안수준에 따라  “이체정지” 및 “지급정지”로 제한을 한다고 설명을 해주시기 바랍니다.\t\t\n\t\t\n[고객보호대상(FDS탐지고객) 고객 조회 방법]\t\t\n- 계정단말 3801 화면(전자금융 신규/조회/변경/해지)에서 \t\t\n  참고: 기업고객은 계정단말 3901 화면\t\t\n  - 거래구분 - “9:조회” 선택 \t\t\n  - 조회구분 ? “2:계좌번호” or “4:이용자ID” or “5:고객번호” 선택 후 “조회” 클릭\t\t\n  - 서비스구분 ? “인터넷” or “스마트폰뱅킹” or “폰뱅킹” 클릭\t\t\n  - 본문 내용 중 고객보호대상에 “Y” 이면 고객보호대상이며 “N” 이면 대상이 아님\t\t\n  - 고객보호대상 “Y”인 경우 “조회”를 클릭하여 상세정보 확인\t\t\n\n\t\t\n1. 이상징후 탐지 이체정지 손님 방문시\t\t\n  1) 제한사항 : 인터넷뱅킹, 스마트폰뱅킹, 폰뱅킹, PG이체\t\t\n  2) 해제방법\t\t\n    가) 본인이 직접 해제 시: 인터넷 또는 스마트폰뱅킹에서 ARS를 통하본인인증\t\t\n(로그인->이체거래->본인인증 ARS)\t\t\n    나) 영업점 방문 시: 보안매체 변경, 전자금융 이용자 비밀번호, 계좌비밀번호 변경(전계좌) 후 해제(OTP사용자는 보안매체 변경 생략 가능)                \t\t\n ※ 주의: 비밀번호 변경 시 초기화 금지(변경으로 처리), 해제처리 안됨   \t\t\n   \t\t\n2. 이상징후 탐지 지급정지(블랙리스트 포함) 손님 방문시\t\t\n   1) 제한사항 : 인터넷뱅킹, 스마트폰뱅킹, 폰뱅킹, PG이체 ,자동화기기 출금제한\t\t\n   2) 해제방법\t\t\n★ 영업점 방문 해제만 가능 :  이체정지 영업점방문과 방법동일\t\t\n(보안매체 변경, 전자금융 이용자 비밀번호, 계좌비밀번호 변경(전계좌)후 해제)\t\t\n ※ OTP사용자는 보안매체변경 생략가능\t\t\n\t\t\n3. 해제 전산조작 방법(3801 화면) \t\t\n   ▶ 보안매체 변경, 전자금융 이용자 비밀번호, 계좌비밀번호 변경(전계좌)후 아래의 해제 조작 가능(OTP사용자는 보안매체 변경 생략 가능) \t\t\n   ▶ 계정단말 3801 전자금융 신규/조회/변경/해지 \t\t\n        화면>거래구분9>고객번호투입>서비스:0전체>상태:1정상>조회>하단 서비스구분 채널 선택 \t\t\n>고객보호대상 Y 조회\t\t\n\t\t\n\n\t\t\n“뭘 해도 해제가 안되요~!!!!?”\t\t\n그럼, 금융소비자보호부 (☏ 82 2828)\t\t\n야간: 정보보호부(보안관제)로 해제처리요청 (☏ 6420-6603)\t\t\n<div><img src=\"/static/images/4e57125b-7a4.jpg\" alt=\"1.jpg\" style=\"max-width: 100%; height: auto;\"><img src=\"/static/images/f61dace6-da8.jpg\" alt=\"2.jpg\" style=\"max-width: 100%; height: auto;\"><img src=\"/static/images/5e32b335-f6e.png\" alt=\"3.png\" style=\"max-width: 100%; height: auto;\"></div>",
+  "attachments": [
+    {
+      "id": "272cb3fd",
+      "name": "FDS.docx",
+      "size": "169KB",
+      "downloadUrl": "/api/attachments/272cb3fd/download",
+      "original_filename": "고객정보보호대상(FDS탐지)해제안내.docx"
+    },
+    {
+      "id": "70ed4f5d",
+      "name": "image.docx",
+      "size": "364KB",
+      "downloadUrl": "/api/attachments/70ed4f5d/download",
+      "original_filename": "전자금융이상징후거래탐지.docx"
+    }
+  ],
+  "uploaded_images": [
+    {
+      "id": "4e57125b-7a4",
+      "filename": "1.jpg",
+      "url": "/static/images/4e57125b-7a4.jpg",
+      "original_filename": "해제1.jpg"
+    },
+    {
+      "id": "f61dace6-da8",
+      "filename": "2.jpg",
+      "url": "/static/images/f61dace6-da8.jpg",
+      "original_filename": "해제2.jpg"
+    },
+    {
+      "id": "5e32b335-f6e",
+      "filename": "3.png",
+      "url": "/static/images/5e32b335-f6e.png",
+      "original_filename": "해제3.png"
+    }
+  ]
+}
