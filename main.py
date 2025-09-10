@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Query
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +12,8 @@ import aiofiles
 import mimetypes
 import re
 from elasticsearch import Elasticsearch, AsyncElasticsearch
+import base64
+from html import unescape
 
 app = FastAPI(
     title="LIPOLAB Posts API",
@@ -160,6 +162,30 @@ def get_all_posts() -> List[dict]:
             if post:
                 posts.append(post)
     return sorted(posts, key=lambda x: x.get('postDate', ''), reverse=True)
+
+def strip_html_tags(html: str) -> str:
+    if not html:
+        return ""
+    # remove script/style content
+    html = re.sub(r"<\s*(script|style)[^>]*>[\s\S]*?<\s*/\s*\1\s*>", " ", html, flags=re.IGNORECASE)
+    # remove tags
+    text = re.sub(r"<[^>]+>", " ", html)
+    # unescape entities
+    text = unescape(text)
+    # collapse whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+def find_file_by_prefix(directory: str, prefix: str) -> Optional[str]:
+    for filename in os.listdir(directory):
+        if filename.startswith(prefix):
+            return os.path.join(directory, filename)
+    return None
+
+def build_absolute_url(relative_url: str, base_url: Optional[str]) -> str:
+    if not base_url:
+        return relative_url
+    return base_url.rstrip('/') + relative_url
 
 def index_post_to_es(post_data: dict):
     es = get_es_client()
@@ -345,6 +371,129 @@ async def download_attachment(file_id: str):
     
     file_path = os.path.join(UPLOADS_DIR, saved_filename)
     return FileResponse(file_path, filename=original_filename)
+
+@app.get("/api/export/posts")
+async def export_posts(
+    include_files: str = Query("metadata", regex="^(none|metadata|base64)$", description="첨부/이미지 포함 수준: none|metadata|base64"),
+    base_url: Optional[str] = Query(None, description="상대 경로 앞에 붙일 Base URL (예: https://example.com:8002)"),
+):
+    """
+    모든 게시물과 연관 첨부파일 및 이미지를 내보내는 Export API
+    RAG 파이프라인 구성을 위해 content_text(HTML 제거)와 파일 메타데이터/내용을 옵션으로 제공합니다.
+    """
+    posts = get_all_posts()
+
+    exported = []
+    for post in posts:
+        # 기본 필드 보정
+        uploaded_images = post.get("uploaded_images") or []
+        attachments = post.get("attachments") or []
+
+        # 텍스트 변환
+        content_html = post.get("content", "")
+        content_text = strip_html_tags(content_html)
+
+        # 첨부파일 가공
+        export_attachments = []
+        for att in attachments:
+            att_id = att.get("id")
+            item = {
+                "id": att_id,
+                "name": att.get("name"),
+                "size_display": att.get("size"),
+                "download_url": build_absolute_url(att.get("downloadUrl", ""), base_url),
+            }
+
+            if include_files in ("metadata", "base64"):
+                file_path = find_file_by_prefix(UPLOADS_DIR, att_id)
+                if file_path and os.path.exists(file_path):
+                    mime, _ = mimetypes.guess_type(file_path)
+                    try:
+                        size_bytes = os.path.getsize(file_path)
+                    except Exception:
+                        size_bytes = None
+                    item.update({
+                        "path": file_path,
+                        "mime_type": mime or "application/octet-stream",
+                        "size_bytes": size_bytes,
+                    })
+                    if include_files == "base64":
+                        try:
+                            with open(file_path, "rb") as f:
+                                b = f.read()
+                            item["content_base64"] = base64.b64encode(b).decode("utf-8")
+                            item["content_encoding"] = "base64"
+                        except Exception:
+                            # 파일 읽기 실패 시 건너뜀
+                            pass
+                else:
+                    item.update({"path": None})
+
+            export_attachments.append(item)
+
+        # 게시물 삽입 이미지 가공
+        export_images = []
+        for img in uploaded_images:
+            img_id = img.get("id")
+            rel_url = img.get("url", "")
+            item = {
+                "id": img_id,
+                "filename": img.get("filename"),
+                "url": build_absolute_url(rel_url, base_url),
+            }
+
+            if include_files in ("metadata", "base64"):
+                # url 형식: /static/images/{image_id}.{ext}
+                # 디렉토리에서 접두어로 검색
+                file_path = find_file_by_prefix(IMAGES_DIR, img_id)
+                if file_path and os.path.exists(file_path):
+                    mime, _ = mimetypes.guess_type(file_path)
+                    try:
+                        size_bytes = os.path.getsize(file_path)
+                    except Exception:
+                        size_bytes = None
+                    item.update({
+                        "path": file_path,
+                        "mime_type": mime or "application/octet-stream",
+                        "size_bytes": size_bytes,
+                    })
+                    if include_files == "base64":
+                        try:
+                            with open(file_path, "rb") as f:
+                                b = f.read()
+                            item["content_base64"] = base64.b64encode(b).decode("utf-8")
+                            item["content_encoding"] = "base64"
+                        except Exception:
+                            pass
+                else:
+                    item.update({"path": None})
+
+            export_images.append(item)
+
+        exported.append({
+            "id": post.get("id"),
+            "title": post.get("title"),
+            "content_html": content_html,
+            "content_text": content_text,
+            "metadata": {
+                "department": post.get("department"),
+                "author": post.get("author"),
+                "category": post.get("category"),
+                "badges": post.get("badges", []),
+                "postDate": post.get("postDate"),
+                "endDate": post.get("endDate"),
+                "views": post.get("views", 0),
+            },
+            "attachments": export_attachments,
+            "images": export_images,
+        })
+
+    return {
+        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "include_files": include_files,
+        "count": len(exported),
+        "posts": exported,
+    }
 
 @app.post("/api/upload-image")
 async def upload_image(

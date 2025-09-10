@@ -61,6 +61,7 @@ uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 - `GET /api/posts` - 모든 게시물 조회
 - `GET /api/posts/{post_id}` - 특정 게시물 조회 (업로드된 이미지 정보 포함)
 - `GET /api/search?q={query}` - 게시물 검색
+- `GET /api/export/posts` - 모든 게시물과 첨부파일/이미지 Export (RAG용)
 
 ### 이미지 업로드
 
@@ -70,6 +71,62 @@ uvicorn main:app --host 0.0.0.0 --port 8002 --reload
 ### 첨부파일
 
 - `GET /api/attachments/{file_id}/download` - 첨부파일 다운로드
+
+## Export API (RAG용)
+
+- `GET /api/export/posts`
+  - Query Params:
+    - `include_files` (기본: `metadata`): `none` | `metadata` | `base64`
+      - `none`: 첨부/이미지의 URL만 포함
+      - `metadata`: 파일 경로, MIME, 바이트 크기 등 포함
+      - `base64`: 위 메타데이터 + 파일 내용을 Base64로 포함
+    - `base_url` (옵션): 상대 경로 앞에 붙일 Base URL (예: `http://localhost:8002`)
+  - 응답 예시:
+  ```json
+  {
+    "exported_at": "2025-09-10T09:00:00Z",
+    "include_files": "metadata",
+    "count": 12,
+    "posts": [
+      {
+        "id": "abc123",
+        "title": "공지",
+        "content_html": "<p>내용</p>",
+        "content_text": "내용",
+        "metadata": {
+          "department": "IT",
+          "author": "관리자",
+          "category": "공지",
+          "badges": ["notice"],
+          "postDate": "2025-09-01",
+          "endDate": null,
+          "views": 10
+        },
+        "attachments": [
+          {
+            "id": "f1a2b3c4",
+            "name": "file.pdf",
+            "size_display": "120KB",
+            "download_url": "http://localhost:8002/api/attachments/f1a2b3c4/download",
+            "path": "data/uploads/f1a2b3c4.pdf",
+            "mime_type": "application/pdf",
+            "size_bytes": 122880
+          }
+        ],
+        "images": [
+          {
+            "id": "img1234567890",
+            "filename": "image.jpg",
+            "url": "http://localhost:8002/static/images/img1234567890.jpg",
+            "path": "data/images/img1234567890.jpg",
+            "mime_type": "image/jpeg",
+            "size_bytes": 34821
+          }
+        ]
+      }
+    ]
+  }
+  ```
 
 ## POST 요청 예시 (Postman)
 
