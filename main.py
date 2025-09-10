@@ -14,6 +14,9 @@ import re
 from elasticsearch import Elasticsearch, AsyncElasticsearch
 import base64
 from html import unescape
+import zipfile
+import tempfile
+import shutil
 
 app = FastAPI(
     title="LIPOLAB Posts API",
@@ -374,126 +377,223 @@ async def download_attachment(file_id: str):
 
 @app.get("/api/export/posts")
 async def export_posts(
-    include_files: str = Query("metadata", regex="^(none|metadata|base64)$", description="첨부/이미지 포함 수준: none|metadata|base64"),
+    format: str = Query("json", regex="^(json|zip)$", description="출력 형식: json (JSON 응답) 또는 zip (ZIP 파일 다운로드)"),
+    include_files: str = Query("metadata", regex="^(none|metadata|files)$", description="첨부/이미지 포함 수준: none|metadata|files"),
     base_url: Optional[str] = Query(None, description="상대 경로 앞에 붙일 Base URL (예: https://example.com:8002)"),
 ):
     """
     모든 게시물과 연관 첨부파일 및 이미지를 내보내는 Export API
-    RAG 파이프라인 구성을 위해 content_text(HTML 제거)와 파일 메타데이터/내용을 옵션으로 제공합니다.
+    - format=json: JSON 형태로 응답 (기존 동작)
+    - format=zip: ZIP 파일로 다운로드 (posts.json + 모든 첨부파일/이미지 포함)
     """
     posts = get_all_posts()
+    
+    if format == "json":
+        # 기존 JSON 응답 로직
+        exported = []
+        for post in posts:
+            uploaded_images = post.get("uploaded_images") or []
+            attachments = post.get("attachments") or []
 
-    exported = []
-    for post in posts:
-        # 기본 필드 보정
-        uploaded_images = post.get("uploaded_images") or []
-        attachments = post.get("attachments") or []
+            content_html = post.get("content", "")
+            content_text = strip_html_tags(content_html)
 
-        # 텍스트 변환
-        content_html = post.get("content", "")
-        content_text = strip_html_tags(content_html)
+            export_attachments = []
+            for att in attachments:
+                att_id = att.get("id")
+                item = {
+                    "id": att_id,
+                    "name": att.get("name"),
+                    "size_display": att.get("size"),
+                    "download_url": build_absolute_url(att.get("downloadUrl", ""), base_url),
+                }
 
-        # 첨부파일 가공
-        export_attachments = []
-        for att in attachments:
-            att_id = att.get("id")
-            item = {
-                "id": att_id,
-                "name": att.get("name"),
-                "size_display": att.get("size"),
-                "download_url": build_absolute_url(att.get("downloadUrl", ""), base_url),
-            }
-
-            if include_files in ("metadata", "base64"):
-                file_path = find_file_by_prefix(UPLOADS_DIR, att_id)
-                if file_path and os.path.exists(file_path):
-                    mime, _ = mimetypes.guess_type(file_path)
-                    try:
-                        size_bytes = os.path.getsize(file_path)
-                    except Exception:
-                        size_bytes = None
-                    item.update({
-                        "path": file_path,
-                        "mime_type": mime or "application/octet-stream",
-                        "size_bytes": size_bytes,
-                    })
-                    if include_files == "base64":
+                if include_files in ("metadata", "files"):
+                    file_path = find_file_by_prefix(UPLOADS_DIR, att_id)
+                    if file_path and os.path.exists(file_path):
+                        mime, _ = mimetypes.guess_type(file_path)
                         try:
-                            with open(file_path, "rb") as f:
-                                b = f.read()
-                            item["content_base64"] = base64.b64encode(b).decode("utf-8")
-                            item["content_encoding"] = "base64"
+                            size_bytes = os.path.getsize(file_path)
                         except Exception:
-                            # 파일 읽기 실패 시 건너뜀
-                            pass
-                else:
-                    item.update({"path": None})
+                            size_bytes = None
+                        item.update({
+                            "path": file_path,
+                            "mime_type": mime or "application/octet-stream",
+                            "size_bytes": size_bytes,
+                        })
+                        if include_files == "files":
+                            try:
+                                with open(file_path, "rb") as f:
+                                    b = f.read()
+                                item["content_base64"] = base64.b64encode(b).decode("utf-8")
+                                item["content_encoding"] = "base64"
+                            except Exception:
+                                pass
+                    else:
+                        item.update({"path": None})
+                export_attachments.append(item)
 
-            export_attachments.append(item)
+            export_images = []
+            for img in uploaded_images:
+                img_id = img.get("id")
+                rel_url = img.get("url", "")
+                item = {
+                    "id": img_id,
+                    "filename": img.get("filename"),
+                    "url": build_absolute_url(rel_url, base_url),
+                }
 
-        # 게시물 삽입 이미지 가공
-        export_images = []
-        for img in uploaded_images:
-            img_id = img.get("id")
-            rel_url = img.get("url", "")
-            item = {
-                "id": img_id,
-                "filename": img.get("filename"),
-                "url": build_absolute_url(rel_url, base_url),
-            }
-
-            if include_files in ("metadata", "base64"):
-                # url 형식: /static/images/{image_id}.{ext}
-                # 디렉토리에서 접두어로 검색
-                file_path = find_file_by_prefix(IMAGES_DIR, img_id)
-                if file_path and os.path.exists(file_path):
-                    mime, _ = mimetypes.guess_type(file_path)
-                    try:
-                        size_bytes = os.path.getsize(file_path)
-                    except Exception:
-                        size_bytes = None
-                    item.update({
-                        "path": file_path,
-                        "mime_type": mime or "application/octet-stream",
-                        "size_bytes": size_bytes,
-                    })
-                    if include_files == "base64":
+                if include_files in ("metadata", "files"):
+                    file_path = find_file_by_prefix(IMAGES_DIR, img_id)
+                    if file_path and os.path.exists(file_path):
+                        mime, _ = mimetypes.guess_type(file_path)
                         try:
-                            with open(file_path, "rb") as f:
-                                b = f.read()
-                            item["content_base64"] = base64.b64encode(b).decode("utf-8")
-                            item["content_encoding"] = "base64"
+                            size_bytes = os.path.getsize(file_path)
                         except Exception:
-                            pass
-                else:
-                    item.update({"path": None})
+                            size_bytes = None
+                        item.update({
+                            "path": file_path,
+                            "mime_type": mime or "application/octet-stream",
+                            "size_bytes": size_bytes,
+                        })
+                        if include_files == "files":
+                            try:
+                                with open(file_path, "rb") as f:
+                                    b = f.read()
+                                item["content_base64"] = base64.b64encode(b).decode("utf-8")
+                                item["content_encoding"] = "base64"
+                            except Exception:
+                                pass
+                    else:
+                        item.update({"path": None})
+                export_images.append(item)
 
-            export_images.append(item)
+            exported.append({
+                "id": post.get("id"),
+                "title": post.get("title"),
+                "content_html": content_html,
+                "content_text": content_text,
+                "metadata": {
+                    "department": post.get("department"),
+                    "author": post.get("author"),
+                    "category": post.get("category"),
+                    "badges": post.get("badges", []),
+                    "postDate": post.get("postDate"),
+                    "endDate": post.get("endDate"),
+                    "views": post.get("views", 0),
+                },
+                "attachments": export_attachments,
+                "images": export_images,
+            })
 
-        exported.append({
-            "id": post.get("id"),
-            "title": post.get("title"),
-            "content_html": content_html,
-            "content_text": content_text,
-            "metadata": {
-                "department": post.get("department"),
-                "author": post.get("author"),
-                "category": post.get("category"),
-                "badges": post.get("badges", []),
-                "postDate": post.get("postDate"),
-                "endDate": post.get("endDate"),
-                "views": post.get("views", 0),
-            },
-            "attachments": export_attachments,
-            "images": export_images,
-        })
-
-    return {
-        "exported_at": datetime.utcnow().isoformat() + "Z",
-        "include_files": include_files,
-        "count": len(exported),
-        "posts": exported,
-    }
+        return {
+            "exported_at": datetime.utcnow().isoformat() + "Z",
+            "include_files": include_files,
+            "count": len(exported),
+            "posts": exported,
+        }
+    
+    else:  # format == "zip"
+        # ZIP 파일로 패키징하여 다운로드
+        with tempfile.TemporaryDirectory() as temp_dir:
+            export_dir = os.path.join(temp_dir, "posts_export")
+            os.makedirs(export_dir)
+            
+            # posts.json 파일 생성
+            posts_data = []
+            for post in posts:
+                content_html = post.get("content", "")
+                content_text = strip_html_tags(content_html)
+                
+                post_export = {
+                    "id": post.get("id"),
+                    "title": post.get("title"),
+                    "content_html": content_html,
+                    "content_text": content_text,
+                    "metadata": {
+                        "department": post.get("department"),
+                        "author": post.get("author"),
+                        "category": post.get("category"),
+                        "badges": post.get("badges", []),
+                        "postDate": post.get("postDate"),
+                        "endDate": post.get("endDate"),
+                        "views": post.get("views", 0),
+                    },
+                    "attachments": [],
+                    "images": []
+                }
+                
+                # 첨부파일 처리
+                if include_files == "files":
+                    attachments_dir = os.path.join(export_dir, "attachments")
+                    os.makedirs(attachments_dir, exist_ok=True)
+                    
+                    for att in post.get("attachments", []):
+                        att_id = att.get("id")
+                        original_name = att.get("original_filename") or att.get("name")
+                        
+                        file_path = find_file_by_prefix(UPLOADS_DIR, att_id)
+                        if file_path and os.path.exists(file_path):
+                            # 파일 복사 (원본명으로 저장)
+                            safe_name = f"{att_id}_{original_name}"
+                            dest_path = os.path.join(attachments_dir, safe_name)
+                            shutil.copy2(file_path, dest_path)
+                            
+                            post_export["attachments"].append({
+                                "id": att_id,
+                                "original_name": original_name,
+                                "file_path": f"attachments/{safe_name}",
+                                "size_display": att.get("size")
+                            })
+                
+                # 이미지 처리
+                if include_files == "files":
+                    images_dir = os.path.join(export_dir, "images")
+                    os.makedirs(images_dir, exist_ok=True)
+                    
+                    for img in post.get("uploaded_images", []):
+                        img_id = img.get("id")
+                        original_name = img.get("original_filename") or img.get("filename")
+                        
+                        file_path = find_file_by_prefix(IMAGES_DIR, img_id)
+                        if file_path and os.path.exists(file_path):
+                            # 파일 복사 (원본명으로 저장)
+                            safe_name = f"{img_id}_{original_name}"
+                            dest_path = os.path.join(images_dir, safe_name)
+                            shutil.copy2(file_path, dest_path)
+                            
+                            post_export["images"].append({
+                                "id": img_id,
+                                "original_name": original_name,
+                                "file_path": f"images/{safe_name}",
+                                "url": img.get("url")
+                            })
+                
+                posts_data.append(post_export)
+            
+            # posts.json 저장
+            posts_json_path = os.path.join(export_dir, "posts.json")
+            with open(posts_json_path, 'w', encoding='utf-8') as f:
+                json.dump({
+                    "exported_at": datetime.utcnow().isoformat() + "Z",
+                    "include_files": include_files,
+                    "count": len(posts_data),
+                    "posts": posts_data
+                }, f, ensure_ascii=False, indent=2)
+            
+            # ZIP 파일 생성
+            zip_path = os.path.join(temp_dir, "posts_export.zip")
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for root, dirs, files in os.walk(export_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, export_dir)
+                        zipf.write(file_path, arcname)
+            
+            # ZIP 파일 반환
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"posts_export_{timestamp}.zip"
+            return FileResponse(zip_path, filename=filename, media_type="application/zip")
 
 @app.post("/api/upload-image")
 async def upload_image(
