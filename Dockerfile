@@ -9,6 +9,6 @@ COPY . .
 
 RUN mkdir -p data/posts data/uploads data/images
 
-EXPOSE 8002
+EXPOSE 3001
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3001"]
